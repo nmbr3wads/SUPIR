@@ -66,9 +66,9 @@ enable_tf32()
 
 cpu = torch.device("cpu")
 device = device_interrogate = device_gfpgan = device_esrgan = device_codeformer = torch.device("cuda")
-dtype = torch.float16
-dtype_vae = torch.float16
-dtype_unet = torch.float16
+dtype = torch.bfloat16
+dtype_vae = torch.bfloat16
+dtype_unet = torch.bfloat16
 unet_needs_upcast = False
 
 
