@@ -73,8 +73,9 @@ import SUPIR.utils.devices as devices
 try:
     import xformers
     import xformers.ops
+    _xformers_available = True
 except ImportError:
-    pass
+    _xformers_available = False
 
 sd_flag = True
 
@@ -361,8 +362,7 @@ def attn2task(task_queue, net):
     else:
         task_queue.append(('store_res', lambda x: x))
         task_queue.append(('pre_norm', net.norm))
-        if is_xformers_available:
-            # task_queue.append(('attn', lambda x, net=net: attn_forward_new_xformers(net, x)))
+        if _xformers_available:
             task_queue.append(
                 ('attn', lambda x, net=net: xformer_attn_forward(net, x)))
         elif hasattr(F, "scaled_dot_product_attention"):
