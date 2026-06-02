@@ -347,6 +347,28 @@ def xformer_attn_forward(self, h_):
     return out
 
 
+def attn_forward_sdpa(self, h_):
+    # Vanilla sgm AttnBlock attention via torch SDPA, for the xformers-absent
+    # path (e.g. Blackwell sm_120 on Windows, where official xformers wheels lack
+    # memory_efficient_attention). Mirrors AttnBlock.attention() in
+    # sgm/modules/diffusionmodules/model.py, but assumes the input is already
+    # group-normed by the tilevae `pre_norm` task and applies proj_out so it
+    # satisfies the (store_res, pre_norm, attn, add_res) task contract — exactly
+    # like xformer_attn_forward above. The old attn_forward_new_pt2_0 was written
+    # for a diffusers-style Attention module (self.group_norm / self.to_q) and
+    # crashes on the sgm AttnBlock with "object has no attribute 'group_norm'".
+    q = self.q(h_)
+    k = self.k(h_)
+    v = self.v(h_)
+    b, c, h, w = q.shape
+    q, k, v = map(
+        lambda x: rearrange(x, "b c h w -> b 1 (h w) c").contiguous(), (q, k, v)
+    )
+    h_ = F.scaled_dot_product_attention(q, k, v)  # scale defaults to c ** -0.5
+    h_ = rearrange(h_, "b 1 (h w) c -> b c h w", h=h, w=w, c=c, b=b)
+    return self.proj_out(h_)
+
+
 def attn2task(task_queue, net):
     if False: #isinstance(net, AttnBlock):
         task_queue.append(('store_res', lambda x: x))
@@ -366,7 +388,7 @@ def attn2task(task_queue, net):
             task_queue.append(
                 ('attn', lambda x, net=net: xformer_attn_forward(net, x)))
         elif hasattr(F, "scaled_dot_product_attention"):
-            task_queue.append(('attn', lambda x, net=net: attn_forward_new_pt2_0(net, x)))
+            task_queue.append(('attn', lambda x, net=net: attn_forward_sdpa(net, x)))
         else:
             task_queue.append(('attn', lambda x, net=net: attn_forward_new(net, x)))
         task_queue.append(['add_res', None])
